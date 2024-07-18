@@ -1,2 +1,3 @@
-# pihole-updater
-A fast Pi-hole ads list downloader
+# Pihole-Updater
+
+A small rust app to download Pi-hole ads list faster than a bash script.
