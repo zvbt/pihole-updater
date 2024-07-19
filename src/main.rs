@@ -5,6 +5,8 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use tokio::task;
+use std::process::Command;
+// Logging setup
 use env_logger::Env;
 use log::{info, error};
 
@@ -45,6 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Ok(parsed_lines) => all_lines.extend(parsed_lines),
             Err(err) => {
                 eprintln!("Error from task: {}", err);
+                // Handle error as needed
             }
         }
     }
@@ -59,10 +62,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(target_os = "linux")]
     move_file(output_file_path)?;
 
-    // Log an error if attempting to move file on non-Linux platform
+    #[cfg(target_os = "linux")]
+    execute_pihole_update().await?;
+
+    // Log an error if not Linux system
     #[cfg(not(target_os = "linux"))]
     {
-        error!("Cannot move file to /var/www/html: Not running on Linux");
+        error!("This app run only on linux");
     }
 
     Ok(())
@@ -102,15 +108,40 @@ fn write_lines_to_file(filename: &str, lines: &[String]) -> io::Result<()> {
 #[cfg(target_os = "linux")]
 fn move_file(filename: &str) -> io::Result<()> {
     let source = PathBuf::from(filename);
-    let target_dir = "/var/www/html";
+    let target_dir = "/var/www/html/archive/hosts/generator";
 
     // Check if the target directory exists, create it if necessary
     if !Path::new(target_dir).exists() {
         fs::create_dir_all(target_dir)?;
+        info!("Creating {} directory", target_dir);
     }
 
     let target = PathBuf::from(format!("{}/{}", target_dir, source.file_name().unwrap().to_str().unwrap()));
     fs::rename(source, target)?;
+    info!("Successfully moved ads_list.txt to {}", target_dir);
+
+    Ok(())
+}
+
+async fn execute_pihole_update() -> io::Result<()> {
+    info!("Running Pihole gravity update");
+    
+    let output = Command::new("docker")
+        .arg("exec")
+        .arg("pihole")
+        .arg("pihole")
+        .arg("-g")
+        .output()
+        .expect("Failed to execute command");
+    
+    if output.status.success() {
+        info!("Pihole gravity updated successfully");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("Error executing Pihole gravity update: {}", stderr);
+        return Err(io::Error::new(io::ErrorKind::Other, "Are you using Pihole in Docker?"));
+    }
 
     Ok(())
 }
